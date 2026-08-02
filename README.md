@@ -59,6 +59,23 @@ python bot.py
 4. Add the environment variables below to the service.
 5. Deploy — the bot starts polling and is live immediately.
 
+### 4b. Deploy on a Linux VPS
+
+One command on a fresh Ubuntu/Debian/RHEL-like server (run from an SSH
+session or your provider's web console):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Retrinaa/Fact-Checker/main/vps-setup.sh | sudo bash
+```
+
+The script installs Docker + git, clones this repo into `/opt/fact-checker`,
+asks for your tokens (stored in `/etc/fact-checker.env`, mode 600), builds
+the image, and starts the bot with `--restart unless-stopped` so it survives
+reboots. Re-run it any time to pull the latest code and redeploy.
+
+⚠️ Run only one copy at a time: if Railway is still polling the same bot
+token, stop that deployment — two pollers steal each other's updates.
+
 ## Environment variables
 
 | Variable | Required | Default | Description |
