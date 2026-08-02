@@ -23,6 +23,7 @@ def web_search(query: str, api_key: str, num_results: int = 5) -> list[dict]:
 
     Raises ExaSearchError on API/network failure so callers can surface the
     problem instead of silently answering from an empty result set."""
+    logger.info("Exa search: %r", query[:120])
     try:
         resp = requests.post(
             EXA_SEARCH_URL,
@@ -33,11 +34,13 @@ def web_search(query: str, api_key: str, num_results: int = 5) -> list[dict]:
                 "numResults": num_results,
                 "contents": {"highlights": True},
             },
-            timeout=20,
+            timeout=10,
         )
     except requests.RequestException as exc:
         logger.warning("Exa request failed: %s", exc)
         raise ExaSearchError(f"search request failed ({exc.__class__.__name__})") from exc
+
+    logger.info("Exa search HTTP %s (%d bytes)", resp.status_code, len(resp.content))
 
     if resp.status_code != 200:
         detail = ""

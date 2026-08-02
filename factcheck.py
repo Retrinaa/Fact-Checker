@@ -124,9 +124,10 @@ def _search_context_block(results: list[dict]) -> str:
     for i, r in enumerate(results, 1):
         date = f" ({r['published_date'][:10]})" if r.get("published_date") else ""
         lines.append(f"[{i}] {r['title']}{date}\n{r['url']}")
-        for h in r.get("highlights", []):
-            lines.append(f"    • {h}")
-    return "\n".join(lines) if lines else "(no results)"
+        for h in r.get("highlights", [])[:2]:  # cap highlights per result
+            lines.append(f"    • {h[:400]}")   # and per-highlight length
+    block = "\n".join(lines) if lines else "(no results)"
+    return block[:4000]  # hard cap so Groq never sees a 413-sized payload
 
 
 def check_claim(claim: str) -> Verdict:
