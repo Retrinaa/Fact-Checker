@@ -19,7 +19,7 @@ from dataclasses import dataclass, field
 from openai import OpenAI
 
 import config
-from exa_search import web_search
+from exa_search import ExaSearchError, web_search
 
 VERDICTS = ("LIKELY TRUE", "FALSE", "MISLEADING", "UNVERIFIABLE")
 
@@ -168,7 +168,19 @@ def check_claim(claim: str) -> Verdict:
                     query = json.loads(call.function.arguments).get("query", claim)
                 except json.JSONDecodeError:
                     query = claim
-                results = web_search(query, config.EXA_API_KEY)
+                try:
+                    results = web_search(query, config.EXA_API_KEY)
+                except ExaSearchError as exc:
+                    # Search is configured but broken (bad key, quota, network).
+                    # Tell the user plainly instead of answering from thin air.
+                    return Verdict(
+                        explanation=(
+                            f"I tried to check this against live web sources, but the "
+                            f"search failed: {exc}. Fix the search configuration and try "
+                            f"again — I don't want to guess on a current-events claim."
+                        ),
+                        searched=True,
+                    )
                 searched_urls = [r["url"] for r in results if r.get("url")]
 
                 messages.append(msg)
