@@ -108,19 +108,26 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
     verdict = await asyncio.to_thread(check_claim, claim)
 
+    searched_line = " <i>(with live web search)</i>" if verdict.searched else ""
     reply = (
         f"{verdict.emoji} <b>{verdict.verdict}</b> "
-        f"<i>(confidence: {verdict.confidence})</i>\n\n"
+        f"<i>(confidence: {verdict.confidence})</i>{searched_line}\n\n"
         f"{verdict.explanation}"
-        f"{DISCLAIMER}"
     )
+    if verdict.sources:
+        links = "\n".join(
+            f'• <a href="{u}">{u.split("//", 1)[-1].split("/", 1)[0]}</a>' for u in verdict.sources
+        )
+        reply += f"\n\n<b>Sources:</b>\n{links}"
+    reply += DISCLAIMER
 
     try:
         await status.edit_text(reply, parse_mode=ParseMode.HTML, disable_web_page_preview=True)
     except Exception:
         # Fallback if HTML in the explanation breaks formatting.
         plain = (
-            f"{verdict.emoji} {verdict.verdict} (confidence: {verdict.confidence})\n\n"
+            f"{verdict.emoji} {verdict.verdict} (confidence: {verdict.confidence})"
+            f"{' (with live web search)' if verdict.searched else ''}\n\n"
             f"{verdict.explanation}\n\n"
         )
         if verdict.sources:
