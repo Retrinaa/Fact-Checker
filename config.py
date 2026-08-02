@@ -25,6 +25,11 @@ GROQ_API_KEY = _required("GROQ_API_KEY")
 GROQ_MODEL = os.environ.get("GROQ_MODEL", "llama-3.1-8b-instant")
 GROQ_BASE_URL = os.environ.get("GROQ_BASE_URL", "https://api.groq.com/openai/v1")
 
+# Exa live web search (optional but recommended for news/current events).
+# When set, the model may call web_search for claims it can't verify from
+# training knowledge alone. Leave empty to disable live search.
+EXA_API_KEY = os.environ.get("EXA_API_KEY", "").strip()
+
 # Max characters of a forwarded message sent to the model (cost control).
 MAX_CLAIM_CHARS = int(os.environ.get("MAX_CLAIM_CHARS", "4000"))
 

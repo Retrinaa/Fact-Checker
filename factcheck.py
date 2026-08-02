@@ -1,5 +1,12 @@
 """Fact-checking core: sends a claim to Groq and parses a strict verdict.
 
+Two-pass tool-calling loop (Exa guide pattern):
+  1. Groq reads the claim and may call the `web_search` tool when the claim
+     depends on current/recent events or facts it cannot verify from
+     training knowledge alone.
+  2. If it searched, Exa results (highlights) are fed back and Groq answers
+     with sources; otherwise it answers from knowledge only.
+
 The model is forced to answer with a small JSON object so the bot can
 render a consistent verdict card. Anything unparseable becomes
 UNVERIFIABLE rather than a made-up answer.
@@ -12,30 +19,63 @@ from dataclasses import dataclass, field
 from openai import OpenAI
 
 import config
+from exa_search import web_search
 
 VERDICTS = ("LIKELY TRUE", "FALSE", "MISLEADING", "UNVERIFIABLE")
 
-SYSTEM_PROMPT = """You are a careful, neutral fact-checking engine.
+SEARCH_TOOL = {
+    "type": "function",
+    "function": {
+        "name": "web_search",
+        "description": (
+            "Search the live web for current information. Use this ONLY when the "
+            "claim depends on recent/current events (today's news, prices, scores, "
+            "who holds an office now, announcements, disasters, conflicts) or facts "
+            "you cannot verify from your training knowledge alone. Do NOT search for "
+            "timeless, well-established facts."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "A focused search query for verifying the central claim.",
+                }
+            },
+            "required": ["query"],
+        },
+    },
+}
+
+SYSTEM_PROMPT = """You are a careful, neutral fact-checking engine with access to live web search.
 
 The user will send you a message (often a forwarded news post, rumor, or viral claim).
 Your job is to assess whether the central factual claim is accurate.
 
+Workflow:
+- If the claim involves recent or current events, breaking news, prices, scores,
+  appointments, or anything your training data may not cover: call web_search first,
+  then base your verdict on the search results.
+- If the claim is about timeless, well-established facts: answer directly, no search.
+
 Rules:
 - Judge only checkable factual claims. Opinions, jokes, predictions, personal messages,
   or vague statements with no verifiable claim are UNVERIFIABLE.
-- If the claim is broadly accurate and matches well-established facts: LIKELY TRUE.
-- If the central claim contradicts well-established facts: FALSE.
+- If the claim is broadly accurate and matches the evidence: LIKELY TRUE.
+- If the central claim contradicts the evidence: FALSE.
 - If it mixes true and false, exaggerates, or is true but framed deceptively: MISLEADING.
-- If you do not have enough reliable knowledge to confirm or refute it (very recent,
-  hyper-local, or niche events): UNVERIFIABLE. Never guess.
-- Be honest about uncertainty. Do not invent sources, links, or statistics.
+- If you cannot find enough reliable information to confirm or refute it (even after
+  searching): UNVERIFIABLE. Never guess.
+- When you used web search, cite 1-3 of the most relevant source URLs in "sources".
+  If you did not search, return an empty list.
 - Keep the explanation to 1-3 short sentences in plain language, written for a
   non-expert. The explanation must be in the same language as the claim.
 
 Answer with ONLY a JSON object, no markdown, no extra text:
 {"verdict": "LIKELY TRUE" | "FALSE" | "MISLEADING" | "UNVERIFIABLE",
  "confidence": "high" | "medium" | "low",
- "explanation": "1-3 sentence plain-language explanation"}
+ "explanation": "1-3 sentence plain-language explanation",
+ "sources": ["https://...", ...]}
 """
 
 
@@ -44,6 +84,8 @@ class Verdict:
     verdict: str = "UNVERIFIABLE"
     confidence: str = "low"
     explanation: str = "I couldn't assess this message."
+    sources: list = field(default_factory=list)
+    searched: bool = False
     raw: str = field(default="", repr=False)
 
     @property
@@ -76,26 +118,86 @@ def _extract_json(text: str) -> dict:
     return {}
 
 
+def _search_context_block(results: list[dict]) -> str:
+    """Format Exa results compactly for the model."""
+    lines = []
+    for i, r in enumerate(results, 1):
+        date = f" ({r['published_date'][:10]})" if r.get("published_date") else ""
+        lines.append(f"[{i}] {r['title']}{date}\n{r['url']}")
+        for h in r.get("highlights", []):
+            lines.append(f"    • {h}")
+    return "\n".join(lines) if lines else "(no results)"
+
+
 def check_claim(claim: str) -> Verdict:
-    """Fact-check a single claim string via Groq. Always returns a Verdict."""
+    """Fact-check a single claim string via Groq (+ optional Exa live search)."""
     claim = claim.strip()[: config.MAX_CLAIM_CHARS]
     if not claim:
         return Verdict(explanation="The message was empty, so there is nothing to check.")
 
+    use_search = bool(config.EXA_API_KEY)
+    messages = [
+        {"role": "system", "content": SYSTEM_PROMPT},
+        {"role": "user", "content": claim},
+    ]
+    searched = False
+    searched_urls: list[str] = []
+
     try:
         client = _client()
-        completion = client.chat.completions.create(
+        kwargs = dict(
             model=config.GROQ_MODEL,
             temperature=0.1,
-            max_tokens=400,
-            messages=[
-                {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": claim},
-            ],
+            max_tokens=500,
+            messages=messages,
         )
-        raw = (completion.choices[0].message.content or "").strip()
+        if use_search:
+            kwargs["tools"] = [SEARCH_TOOL]
+            kwargs["tool_choice"] = "auto"
+
+        # --- Pass 1: model may request a web search ---
+        completion = client.chat.completions.create(**kwargs)
+        msg = completion.choices[0].message
+
+        tool_calls = getattr(msg, "tool_calls", None) or []
+        if use_search and tool_calls:
+            call = tool_calls[0]
+            if call.function.name == "web_search":
+                searched = True
+                try:
+                    query = json.loads(call.function.arguments).get("query", claim)
+                except json.JSONDecodeError:
+                    query = claim
+                results = web_search(query, config.EXA_API_KEY)
+                searched_urls = [r["url"] for r in results if r.get("url")]
+
+                messages.append(msg)
+                messages.append(
+                    {
+                        "role": "tool",
+                        "tool_call_id": call.id,
+                        "content": _search_context_block(results),
+                    }
+                )
+
+                # --- Pass 2: verdict grounded in search results ---
+                completion = client.chat.completions.create(
+                    model=config.GROQ_MODEL,
+                    temperature=0.1,
+                    max_tokens=500,
+                    messages=messages,
+                )
+                msg = completion.choices[0].message
+
+        raw = (msg.content or "").strip()
     except Exception as exc:  # API error, rate limit, network, etc.
-        return Verdict(explanation=f"Fact-check service is unavailable right now ({exc.__class__.__name__}). Please try again in a moment.")
+        return Verdict(
+            explanation=(
+                f"Fact-check service is unavailable right now "
+                f"({exc.__class__.__name__}). Please try again in a moment."
+            ),
+            searched=searched,
+        )
 
     data = _extract_json(raw)
     verdict = str(data.get("verdict", "")).upper().strip()
@@ -106,4 +208,21 @@ def check_claim(claim: str) -> Verdict:
         confidence = "low"
     explanation = str(data.get("explanation", "")).strip() or "I couldn't assess this message."
 
-    return Verdict(verdict=verdict, confidence=confidence, explanation=explanation, raw=raw)
+    sources = []
+    if searched:
+        for u in data.get("sources") or []:
+            u = str(u).strip()
+            if u.startswith("http"):
+                sources.append(u)
+        if not sources:
+            sources = searched_urls[:3]
+        sources = sources[:3]
+
+    return Verdict(
+        verdict=verdict,
+        confidence=confidence,
+        explanation=explanation,
+        sources=sources,
+        searched=searched,
+        raw=raw,
+    )

@@ -116,15 +116,17 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     )
 
     try:
-        await status.edit_text(reply, parse_mode=ParseMode.HTML)
+        await status.edit_text(reply, parse_mode=ParseMode.HTML, disable_web_page_preview=True)
     except Exception:
         # Fallback if HTML in the explanation breaks formatting.
         plain = (
             f"{verdict.emoji} {verdict.verdict} (confidence: {verdict.confidence})\n\n"
             f"{verdict.explanation}\n\n"
-            "Automated AI check — verify important claims with primary sources."
         )
-        await status.edit_text(plain)
+        if verdict.sources:
+            plain += "Sources:\n" + "\n".join(verdict.sources) + "\n\n"
+        plain += "Automated AI check — verify important claims with primary sources."
+        await status.edit_text(plain, disable_web_page_preview=True)
 
 
 def main() -> None:

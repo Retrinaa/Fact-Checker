@@ -98,6 +98,17 @@ With the default model, a typical check is well under a tenth of a cent
 | File | Purpose |
 |---|---|
 | `bot.py` | Telegram handlers, rate limiting, verdict rendering |
+| `factcheck.py` | Groq tool-calling loop + strict verdict parsing |
+| `exa_search.py` | Minimal Exa /search REST client (live web search) |
+| `config.py` | Environment-based config (no secrets in code) |
+| `Dockerfile` | Railway worker image |
+worker image |
+
+|---|---|
+| `bot.py` | Telegram handlers, rate limiting, verdict rendering |
 | `factcheck.py` | Groq call + strict verdict parsing |
+| `config.py` | Environment-based config (no secrets in code) |
+| `Dockerfile` | Railway worker image |
+ parsing |
 | `config.py` | Environment-based config (no secrets in code) |
 | `Dockerfile` | Railway worker image |
