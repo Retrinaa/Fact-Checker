@@ -11,15 +11,19 @@ Forward any post to the bot (or paste the text) and it replies with a verdict:
 …plus a confidence level and a short plain-language explanation, in the
 language of the original message.
 
-Powered by [Groq](https://groq.com) running `llama-3.1-8b-instant` —
-thousands of checks cost pennies.
+Powered by any OpenAI-compatible chat API (default: **CodeCraft**
+`https://codecraftapi.com/v1` running `qwen3.8-max`), with **You.com**
+live web search for current-events claims.
 
 ## How it works
 
 1. You forward a message (or type a claim) to the bot in Telegram.
-2. The bot sends the text to Groq with a strict fact-checking prompt that
+2. The bot sends the text to the LLM with a strict fact-checking prompt that
    forces a JSON verdict (`verdict` / `confidence` / `explanation`).
-3. The bot renders a verdict card and replies. Unparseable answers become
+3. If the claim depends on recent events, the model calls the `web_search`
+   tool; the bot queries the You.com Web Search API and feeds the snippets
+   back for a grounded verdict with sources.
+4. The bot renders a verdict card and replies. Unparseable answers become
    UNVERIFIABLE rather than a made-up verdict.
 
 The bot uses **long polling**, so it needs no public URL, domain, or webhook.
@@ -34,24 +38,33 @@ The bot uses **long polling**, so it needs no public URL, domain, or webhook.
 Talk to [@BotFather](https://t.me/BotFather) on Telegram, run `/newbot`,
 and copy the bot token.
 
-### 2. Get a Groq API key
+### 2. Get an LLM API key
 
-Sign up at <https://console.groq.com> and create an API key. The free tier
-(30 requests/minute) is plenty for light use.
+You need a key for an OpenAI-compatible provider. The default is
+CodeCraft (<https://codecraftapi.com>) — create an API key there and use
+it as `LLM_API_KEY`. Any other OpenAI-compatible endpoint works too:
+set `LLM_BASE_URL` and `LLM_MODEL` accordingly.
 
-### 3. Run locally
+### 3. (Optional) Get a You.com API key for live web search
+
+Sign up at <https://you.com> (Platform → API Keys) and set `YDC_API_KEY`.
+Without it the bot still works, but current-events claims are answered
+without live web grounding.
+
+### 4. Run locally
 
 ```bash
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 
 export TELEGRAM_BOT_TOKEN="123456:ABC..."
-export GROQ_API_KEY="your-groq-api-key"
+export LLM_API_KEY="your-llm-api-key"
+export YDC_API_KEY="your-youcom-key"   # optional
 
 python bot.py
 ```
 
-### 4. Deploy on Railway
+### 5. Deploy on Railway
 
 1. Push this repo to GitHub.
 2. In Railway: **New Project → Deploy from GitHub repo** and pick this repo.
@@ -59,7 +72,7 @@ python bot.py
 4. Add the environment variables below to the service.
 5. Deploy — the bot starts polling and is live immediately.
 
-### 4b. Deploy on a Linux VPS
+### 5b. Deploy on a Linux VPS
 
 One command on a fresh Ubuntu/Debian/RHEL-like server (run from an SSH
 session or your provider's web console):
@@ -81,25 +94,21 @@ token, stop that deployment — two pollers steal each other's updates.
 | Variable | Required | Default | Description |
 |---|---|---|---|
 | `TELEGRAM_BOT_TOKEN` | ✅ | — | Token from @BotFather |
-| `GROQ_API_KEY` | ✅ | — | API key from console.groq.com |
-| `GROQ_MODEL` | ❌ | `llama-3.1-8b-instant` | Groq model to use (e.g. `llama-3.3-70b-versatile` for better accuracy at higher cost) |
+| `LLM_API_KEY` | ✅ | — | API key for the chat provider (default: CodeCraft) |
+| `LLM_BASE_URL` | ❌ | `https://codecraftapi.com/v1` | OpenAI-compatible base URL |
+| `LLM_MODEL` | ❌ | `qwen3.8-max` | Model name at the provider |
+| `YDC_API_KEY` | ❌ | — | You.com API key — enables live web search |
 | `MAX_CLAIM_CHARS` | ❌ | `4000` | Max characters of a message sent to the model |
 | `RATE_LIMIT_CHECKS` | ❌ | `10` | Max checks per user per window |
 | `RATE_LIMIT_WINDOW_SECONDS` | ❌ | `3600` | Rate-limit window in seconds |
-
-## Cost
-
-With the default model, a typical check is well under a tenth of a cent
-(≈ $0.05 per million input tokens). The per-user rate limit plus
-`MAX_CLAIM_CHARS` cap keep the bill tiny even if the bot gets busy.
 
 ## Project layout
 
 | File | Purpose |
 |---|---|
 | `bot.py` | Telegram handlers, rate limiting, verdict rendering |
-| `factcheck.py` | Groq tool-calling loop + strict verdict parsing |
-| `exa_search.py` | Minimal Exa /search REST client (live web search) |
+| `factcheck.py` | Tool-calling loop + strict verdict parsing |
+| `you_search.py` | Minimal You.com /search REST client (live web search) |
 | `config.py` | Environment-based config (no secrets in code) |
 | `Dockerfile` | Railway worker image |
 worker image |

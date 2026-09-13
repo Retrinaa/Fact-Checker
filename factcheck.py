@@ -1,15 +1,15 @@
-"""Fact-checking core: sends a claim to Groq and parses a strict verdict.
+"""Fact-checking core: sends a claim to the configured LLM and parses a strict verdict.
 
-Two-pass tool-calling loop (Exa guide pattern):
-  1. Groq reads the claim and may call the `web_search` tool when the claim
-     depends on current/recent events or facts it cannot verify from
-     training knowledge alone.
-  2. If it searched, Exa results (highlights) are fed back and Groq answers
-     with sources; otherwise it answers from knowledge only.
+Two-pass tool-calling loop:
+  1. The model reads the claim and may call the `web_search` tool when the claim
+     depends on current/recent events or facts it cannot verify from training
+     knowledge alone.
+  2. If it searched, You.com results (snippets) are fed back and the model
+     answers with sources; otherwise it answers from knowledge only.
 
-The model is forced to answer with a small JSON object so the bot can
-render a consistent verdict card. Anything unparseable becomes
-UNVERIFIABLE rather than a made-up answer.
+The model is forced to answer with a small JSON object so the bot can render a
+consistent verdict card. Anything unparseable becomes UNVERIFIABLE rather than
+a made-up answer.
 """
 
 import json
@@ -19,7 +19,7 @@ from dataclasses import dataclass, field
 from openai import OpenAI
 
 import config
-from exa_search import ExaSearchError, web_search
+from you_search import YouSearchError, web_search
 
 VERDICTS = ("LIKELY TRUE", "FALSE", "MISLEADING", "UNVERIFIABLE")
 
@@ -99,7 +99,7 @@ class Verdict:
 
 
 def _client() -> OpenAI:
-    return OpenAI(api_key=config.GROQ_API_KEY, base_url=config.GROQ_BASE_URL)
+    return OpenAI(api_key=config.LLM_API_KEY, base_url=config.LLM_BASE_URL)
 
 
 def _extract_json(text: str) -> dict:
@@ -119,24 +119,24 @@ def _extract_json(text: str) -> dict:
 
 
 def _search_context_block(results: list[dict]) -> str:
-    """Format Exa results compactly for the model."""
+    """Format You.com results compactly for the model."""
     lines = []
     for i, r in enumerate(results, 1):
         date = f" ({r['published_date'][:10]})" if r.get("published_date") else ""
         lines.append(f"[{i}] {r['title']}{date}\n{r['url']}")
-        for h in r.get("highlights", [])[:2]:  # cap highlights per result
-            lines.append(f"    • {h[:400]}")   # and per-highlight length
+        for h in r.get("highlights", [])[:2]:  # cap snippets per result
+            lines.append(f"    • {h[:400]}")   # and per-snippet length
     block = "\n".join(lines) if lines else "(no results)"
-    return block[:4000]  # hard cap so Groq never sees a 413-sized payload
+    return block[:4000]  # hard cap so the model never sees a 413-sized payload
 
 
 def check_claim(claim: str) -> Verdict:
-    """Fact-check a single claim string via Groq (+ optional Exa live search)."""
+    """Fact-check a single claim string via the configured LLM (+ optional You.com live search)."""
     claim = claim.strip()[: config.MAX_CLAIM_CHARS]
     if not claim:
         return Verdict(explanation="The message was empty, so there is nothing to check.")
 
-    use_search = bool(config.EXA_API_KEY)
+    use_search = bool(config.YDC_API_KEY)
     messages = [
         {"role": "system", "content": SYSTEM_PROMPT},
         {"role": "user", "content": claim},
@@ -147,7 +147,7 @@ def check_claim(claim: str) -> Verdict:
     try:
         client = _client()
         kwargs = dict(
-            model=config.GROQ_MODEL,
+            model=config.LLM_MODEL,
             temperature=0.1,
             max_tokens=500,
             messages=messages,
@@ -170,8 +170,8 @@ def check_claim(claim: str) -> Verdict:
                 except json.JSONDecodeError:
                     query = claim
                 try:
-                    results = web_search(query, config.EXA_API_KEY)
-                except ExaSearchError as exc:
+                    results = web_search(query, config.YDC_API_KEY)
+                except YouSearchError as exc:
                     # Search is configured but broken (bad key, quota, network).
                     # Tell the user plainly instead of answering from thin air.
                     return Verdict(
@@ -195,7 +195,7 @@ def check_claim(claim: str) -> Verdict:
 
                 # --- Pass 2: verdict grounded in search results ---
                 completion = client.chat.completions.create(
-                    model=config.GROQ_MODEL,
+                    model=config.LLM_MODEL,
                     temperature=0.1,
                     max_tokens=500,
                     messages=messages,

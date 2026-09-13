@@ -73,14 +73,21 @@ read_var() { # $1=var name  $2=prompt text  $3=allow empty (optional)
 if [ ! -f "$ENV_FILE" ]; then
   log "First-time setup — enter your secrets (stored only in $ENV_FILE, mode 600):"
   TELEGRAM_BOT_TOKEN="$(read_var TELEGRAM_BOT_TOKEN 'Telegram bot token (from @BotFather)')"
-  GROQ_API_KEY="$(read_var GROQ_API_KEY 'Groq API key (from console.groq.com)')"
-  GROQ_MODEL="$(read_var GROQ_MODEL 'Groq model [Enter = llama-3.1-8b-instant]' allow-empty)"
-  GROQ_MODEL="${GROQ_MODEL:-llama-3.1-8b-instant}"
+  LLM_API_KEY="$(read_var LLM_API_KEY 'LLM provider API key (default provider: codecraftapi.com)')"
+  LLM_BASE_URL="$(read_var LLM_BASE_URL 'LLM base URL [Enter = https://codecraftapi.com/v1]' allow-empty)"
+  LLM_BASE_URL="${LLM_BASE_URL:-https://codecraftapi.com/v1}"
+  LLM_MODEL="$(read_var LLM_MODEL 'LLM model [Enter = qwen3.8-max]' allow-empty)"
+  LLM_MODEL="${LLM_MODEL:-qwen3.8-max}"
+  YDC_API_KEY="$(read_var YDC_API_KEY 'You.com API key for web search (optional, Enter to skip)' allow-empty)"
   umask 077
   {
     echo "TELEGRAM_BOT_TOKEN=$TELEGRAM_BOT_TOKEN"
-    echo "GROQ_API_KEY=$GROQ_API_KEY"
-    echo "GROQ_MODEL=$GROQ_MODEL"
+    echo "LLM_API_KEY=$LLM_API_KEY"
+    echo "LLM_BASE_URL=$LLM_BASE_URL"
+    echo "LLM_MODEL=$LLM_MODEL"
+    if [ -n "$YDC_API_KEY" ]; then
+      echo "YDC_API_KEY=$YDC_API_KEY"
+    fi
   } > "$ENV_FILE"
   log "Secrets saved to $ENV_FILE."
 else

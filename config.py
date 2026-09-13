@@ -18,17 +18,17 @@ def _required(name: str) -> str:
 
 # --- Required secrets (set these in Railway / your shell, never in code) ---
 TELEGRAM_BOT_TOKEN = _required("TELEGRAM_BOT_TOKEN")
-GROQ_API_KEY = _required("GROQ_API_KEY")
+LLM_API_KEY = _required("LLM_API_KEY")
 
-# --- Optional knobs with sensible defaults ---
-# Cheapest Groq model; good enough for classification + short explanations.
-GROQ_MODEL = os.environ.get("GROQ_MODEL", "llama-3.1-8b-instant")
-GROQ_BASE_URL = os.environ.get("GROQ_BASE_URL", "https://api.groq.com/openai/v1")
+# --- LLM provider: any OpenAI-compatible endpoint ---
+# Default: CodeCraft (https://codecraftapi.com/v1) serving qwen3.8-max.
+LLM_BASE_URL = os.environ.get("LLM_BASE_URL", "https://codecraftapi.com/v1")
+LLM_MODEL = os.environ.get("LLM_MODEL", "qwen3.8-max")
 
-# Exa live web search (optional but recommended for news/current events).
+# You.com live web search (optional but recommended for news/current events).
 # When set, the model may call web_search for claims it can't verify from
 # training knowledge alone. Leave empty to disable live search.
-EXA_API_KEY = os.environ.get("EXA_API_KEY", "").strip()
+YDC_API_KEY = os.environ.get("YDC_API_KEY", "").strip()
 
 # Max characters of a forwarded message sent to the model (cost control).
 MAX_CLAIM_CHARS = int(os.environ.get("MAX_CLAIM_CHARS", "4000"))
