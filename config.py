@@ -22,7 +22,12 @@ LLM_API_KEY = _required("LLM_API_KEY")
 
 # --- LLM provider: any OpenAI-compatible endpoint ---
 # Default: CodeCraft (https://codecraftapi.com/v1) serving qwen3.8-max.
-LLM_BASE_URL = os.environ.get("LLM_BASE_URL", "https://codecraftapi.com/v1")
+# LLM_BASE_URL must be the API ROOT (e.g. https://openrouter.ai/api/v1) —
+# the OpenAI SDK appends /chat/completions itself. A trailing /chat/completions
+# or slash is stripped below so a doubled path can never 404.
+LLM_BASE_URL = os.environ.get("LLM_BASE_URL", "https://codecraftapi.com/v1").strip().rstrip("/")
+if LLM_BASE_URL.endswith("/chat/completions"):
+    LLM_BASE_URL = LLM_BASE_URL[: -len("/chat/completions")].rstrip("/")
 LLM_MODEL = os.environ.get("LLM_MODEL", "qwen3.8-max")
 
 # You.com live web search (optional but recommended for news/current events).

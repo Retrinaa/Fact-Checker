@@ -99,6 +99,8 @@ class Verdict:
 
 
 def _client() -> OpenAI:
+    # config.LLM_BASE_URL is normalized (root URL, no /chat/completions suffix)
+    # so the SDK's own path-appending always lands on the right endpoint.
     return OpenAI(api_key=config.LLM_API_KEY, base_url=config.LLM_BASE_URL)
 
 

@@ -95,8 +95,8 @@ token, stop that deployment — two pollers steal each other's updates.
 |---|---|---|---|
 | `TELEGRAM_BOT_TOKEN` | ✅ | — | Token from @BotFather |
 | `LLM_API_KEY` | ✅ | — | API key for the chat provider (default: CodeCraft) |
-| `LLM_BASE_URL` | ❌ | `https://codecraftapi.com/v1` | OpenAI-compatible base URL |
-| `LLM_MODEL` | ❌ | `qwen3.8-max` | Model name at the provider |
+| `LLM_BASE_URL` | ❌ | `https://codecraftapi.com/v1` | OpenAI-compatible **API root** — never include `/chat/completions` (the SDK appends it; a trailing one is stripped automatically). OpenRouter example: `https://openrouter.ai/api/v1` |
+| `LLM_MODEL` | ❌ | `qwen3.8-max` | Model name at the provider — must be the provider's exact model ID (e.g. on OpenRouter: `qwen/qwen3.8-max-0902`) |
 | `YDC_API_KEY` | ❌ | — | You.com API key — enables live web search |
 | `MAX_CLAIM_CHARS` | ❌ | `4000` | Max characters of a message sent to the model |
 | `RATE_LIMIT_CHECKS` | ❌ | `10` | Max checks per user per window |
