@@ -13,6 +13,7 @@ a made-up answer.
 """
 
 import json
+import logging
 import re
 from dataclasses import dataclass, field
 
@@ -20,6 +21,8 @@ from openai import OpenAI
 
 import config
 from you_search import YouSearchError, web_search
+
+logger = logging.getLogger("fact-checker.factcheck")
 
 VERDICTS = ("LIKELY TRUE", "FALSE", "MISLEADING", "UNVERIFIABLE")
 
@@ -206,6 +209,14 @@ def check_claim(claim: str) -> Verdict:
 
         raw = (msg.content or "").strip()
     except Exception as exc:  # API error, rate limit, network, etc.
+        detail = ""
+        # OpenAI SDK errors carry the provider's response body/message —
+        # log it fully so provider-side 4xx reasons (403 guardrails, key
+        # restrictions, model access) are visible in deployment logs.
+        body = getattr(getattr(exc, "body", None), "__str__", lambda: None)()
+        detail = body or getattr(exc, "message", "") or str(exc)
+        detail = detail[:300]
+        logger.error("LLM call failed: %s: %s", exc.__class__.__name__, detail)
         return Verdict(
             explanation=(
                 f"Fact-check service is unavailable right now "
